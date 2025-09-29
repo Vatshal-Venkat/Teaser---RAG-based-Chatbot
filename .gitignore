@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pkl
+
+# Streamlit secrets
+.secrets.toml
+.streamlit/secrets.toml
+
+# FAISS index files
+faiss_store/
+
+# OS / Editor files
+.DS_Store
+*.swp
