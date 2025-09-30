@@ -396,7 +396,8 @@ if uploaded_files:
 user_query = st.chat_input("Ask Query...")
 
 if user_query:
-    current_time = datetime.datetime.now().strftime("%H:%M")
+    IST = timezone(timedelta(hours=5, minutes=30))
+    current_time = datetime.now(IST).strftime("%H:%M")
 
     # Save user message instantly
     st.session_state.messages.append({
