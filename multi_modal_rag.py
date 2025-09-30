@@ -1,5 +1,5 @@
 # ===============================
-# multi_modal_rag.py (Refactored + Automatic KB fallback to Gemini API)
+# multi_modal_rag.py (Refactored + Automatic KB fallback to Gemini API + Safe streaming)
 # ===============================
 import os
 import tempfile
@@ -38,7 +38,6 @@ try:
 except Exception as e:
     st.error(f"Secret loading failed: {e}")
 
-# ✅ Use supported model
 chat_model = genai.GenerativeModel("models/gemini-2.5-pro")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
 
@@ -179,7 +178,7 @@ def delete_document_by_source(source_name):
         save_text_faiss(text_index, text_docs)
 
 # -------------------------------
-# RAG Chat (Automatic KB fallback to Gemini API)
+# RAG Chat (Automatic KB fallback to Gemini API + Safe streaming)
 # -------------------------------
 def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
                    faiss_weight=0.6, bm25_weight=0.4, threshold=0.3):
@@ -256,10 +255,13 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
     response = chat_model.generate_content(prompt, stream=True)
     return response, retrieved_images, retrieved_texts
 
+# -------------------------------
+# The rest of your Streamlit code (UI, file uploader, chat handling)
+# -------------------------------
+
+
 
 st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
-
-# CSS + Copy Script
 st.markdown("""<style>
 .chat-container { max-width:600px; margin:auto; overflow-y:auto; max-height:75vh; padding-bottom:100px; }
 .chat-row { display:flex; align-items:flex-start; margin:6px 0; }
