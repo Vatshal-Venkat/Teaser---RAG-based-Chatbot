@@ -1,0 +1,12 @@
+streamlit
+PyPDF2
+Pillow
+faiss-cpu
+numpy
+torch
+transformers
+sentence-transformers
+rank-bm25
+google-generativeai
+langchain
+langchain-community
