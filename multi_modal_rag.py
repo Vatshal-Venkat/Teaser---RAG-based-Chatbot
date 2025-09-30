@@ -460,6 +460,9 @@ if user_query:
     # Clear "Thinking..."
     thinking_placeholder.empty()
 
+    if not collected_text.strip():
+        collected_text = "⚠️ Sorry, I could not generate an answer at this moment."
+
     # Finalize response
     formatted_answer = format_answer(collected_text)
     current_time = datetime.datetime.now().strftime("%H:%M")
@@ -477,7 +480,7 @@ if user_query:
         for src in retrieved_sources:
             try:
                 sfile = os.path.basename(src.metadata.get("source", "uploaded.pdf"))
-                spage = src.metadata.get("page", "?")
+                spage = src.metadata.get("page", "1")
             except Exception:
                 sfile = str(getattr(src, "source", "uploaded.pdf"))
                 spage = str(getattr(src, "page", "?"))
