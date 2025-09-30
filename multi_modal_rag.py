@@ -1,5 +1,5 @@
 # ===============================
-# multi_modal_rag.py (Refactored + Automatic KB fallback to Gemini API + Safe streaming)
+# multi_modal_rag.py (Refactored with Copy Button, fixed model)
 # ===============================
 import os
 import tempfile
@@ -22,7 +22,6 @@ from transformers import CLIPProcessor, CLIPModel
 import torch
 from sentence_transformers import SentenceTransformer
 from html import escape
-from datetime import datetime, timezone, timedelta
 
 # -------------------------------
 # GPU Setup
@@ -39,7 +38,8 @@ try:
 except Exception as e:
     st.error(f"Secret loading failed: {e}")
 
-chat_model = genai.GenerativeModel("models/gemini-2.5-pro-preview-06-05")
+# ✅ Use supported model
+chat_model = genai.GenerativeModel("models/gemini-2.5-pro")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
 
 # -------------------------------
@@ -179,11 +179,10 @@ def delete_document_by_source(source_name):
         save_text_faiss(text_index, text_docs)
 
 # -------------------------------
-# RAG Chat (Automatic KB fallback to Gemini API + Safe streaming)
+# RAG Chat (with strict fallback)
 # -------------------------------
 def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
                    faiss_weight=0.6, bm25_weight=0.4, threshold=0.3):
-
     # --- Retrieve FAISS + BM25 documents ---
     faiss_scores, faiss_results = [], []
     if text_index and text_docs:
@@ -237,29 +236,41 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
         except Exception:
             retrieved_images = []
 
-    # --- Automatic fallback to Gemini API if KB empty ---
-    disclaimer_text = ""
-    if not retrieved_texts:
-        disclaimer_text = "⚠️ I couldn't find relevant information in my knowledge base, I'll fetch answer using my API."
-        prompt = f"{disclaimer_text}\n\nQuestion: {query}\nAnswer using your general knowledge:"
-        retrieved_texts = [Document(page_content=disclaimer_text, metadata={"source": "GEMINI API", "page": "Null"})]
-    else:
+    # --- Prepare context or fallback ---
+    if retrieved_texts:
         text_contexts = [
-            f"{d.page_content.strip()} (Source: {d.metadata.get('source','uploaded.pdf')}, Page: {d.metadata.get('page','?')})"
+            f"{d.page_content.strip()} (Source: {d.metadata.get('Source','uploaded.pdf')}, Page: {d.metadata.get('page','1')})"
             for d in retrieved_texts
         ]
-        image_context = " ".join([f"[Image: {os.path.basename(path)}]" for path in retrieved_images])
-        context = "\n".join(text_contexts) + ("\n" + image_context if image_context else "")
+        image_context = " ".join([f"[Image: {os.path.basename(path)}]"
+                                  for path in retrieved_images if isinstance(path, str)])
+        context = "\n".join(text_contexts).strip() + ("\n" + image_context if image_context else "")
         prompt = f"Use the following information to answer the question clearly and professionally:\n{context}\n\nQuestion: {query}\nAnswer:"
+    else:
+        # --- FALLBACK to Gemini's knowledge ---
+        prompt = f"Question: {query}\nAnswer this question based on your general knowledge:"
+        retrieved_texts = [Document(page_content="Answered by Gemini AI",
+                                    metadata={"source": "GEMINI AI", "page": "Null"})]
 
     # --- Generate response from Gemini ---
     response = chat_model.generate_content(prompt, stream=True)
     return response, retrieved_images, retrieved_texts
 
+
 # -------------------------------
-# Streamlit UI & Chat Handling
+# Format answers
+# -------------------------------
+def format_answer(answer:str)->str:
+    answer = re.sub(r"(\d+)\.\s+", r"\n\1. ", answer)
+    answer = re.sub(r"[-•]\s+", r"\n- ", answer)
+    return answer.strip()
+
+# -------------------------------
+# Streamlit UI
 # -------------------------------
 st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
+
+# CSS + Copy Script
 st.markdown("""<style>
 .chat-container { max-width:600px; margin:auto; overflow-y:auto; max-height:75vh; padding-bottom:100px; }
 .chat-row { display:flex; align-items:flex-start; margin:6px 0; }
@@ -393,8 +404,7 @@ if uploaded_files:
 user_query = st.chat_input("Ask Query...")
 
 if user_query:
-    IST = timezone(timedelta(hours=5, minutes=30))
-    current_time = datetime.now(IST).strftime("%H:%M")
+    current_time = datetime.datetime.now().strftime("%H:%M")
 
     # Save user message instantly
     st.session_state.messages.append({
@@ -461,16 +471,9 @@ if user_query:
     # Clear "Thinking..."
     thinking_placeholder.empty()
 
-    if not collected_text.strip():
-        collected_text = "⚠️ Sorry, I could not generate an answer at this moment."
-
     # Finalize response
-    try:
-        formatted_answer = format_answer(collected_text)
-    except Exception:
-        formatted_answer = collected_text or "⚠️ Sorry, I could not generate an answer at this moment."
-    IST = timezone(timedelta(hours=5, minutes=30))
-    current_time = datetime.now(IST).strftime("%H:%M")
+    formatted_answer = format_answer(collected_text)
+    current_time = datetime.datetime.now().strftime("%H:%M")
     st.session_state.messages.append({
         "role": "assistant",
         "content": formatted_answer,
@@ -485,7 +488,7 @@ if user_query:
         for src in retrieved_sources:
             try:
                 sfile = os.path.basename(src.metadata.get("source", "uploaded.pdf"))
-                spage = src.metadata.get("page", "1")
+                spage = src.metadata.get("page", "?")
             except Exception:
                 sfile = str(getattr(src, "source", "uploaded.pdf"))
                 spage = str(getattr(src, "page", "?"))
