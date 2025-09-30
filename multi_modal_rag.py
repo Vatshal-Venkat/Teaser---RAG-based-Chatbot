@@ -22,6 +22,7 @@ from transformers import CLIPProcessor, CLIPModel
 import torch
 from sentence_transformers import SentenceTransformer
 from html import escape
+from datetime import datetime, timezone, timedelta
 
 # -------------------------------
 # GPU Setup
@@ -38,7 +39,7 @@ try:
 except Exception as e:
     st.error(f"Secret loading failed: {e}")
 
-chat_model = genai.GenerativeModel("models/gemini-2.5-pro")
+chat_model = genai.GenerativeModel("models/gemini-2.5-pro-preview-06-05")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
 
 # -------------------------------
@@ -466,8 +467,12 @@ if user_query:
         collected_text = "⚠️ Sorry, I could not generate an answer at this moment."
 
     # Finalize response
-    formatted_answer = format_answer(collected_text)
-    current_time = datetime.datetime.now().strftime("%H:%M")
+    try:
+        formatted_answer = format_answer(collected_text)
+    except Exception:
+        formatted_answer = collected_text or "⚠️ Sorry, I could not generate an answer at this moment."
+    IST = timezone(timedelta(hours=5, minutes=30))
+    current_time = datetime.now(IST).strftime("%H:%M")
     st.session_state.messages.append({
         "role": "assistant",
         "content": formatted_answer,
