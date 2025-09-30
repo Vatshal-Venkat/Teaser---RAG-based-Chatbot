@@ -1,5 +1,5 @@
 # ===============================
-# multi_modal_rag.py (Refactored with Copy Button, fixed model + mode toggle)
+# multi_modal_rag.py (Refactored + Automatic KB fallback to Gemini API)
 # ===============================
 import os
 import tempfile
@@ -179,7 +179,7 @@ def delete_document_by_source(source_name):
         save_text_faiss(text_index, text_docs)
 
 # -------------------------------
-# RAG Chat (with modes: KB, General, Hybrid)
+# RAG Chat (Automatic KB fallback to Gemini API)
 # -------------------------------
 def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
                    faiss_weight=0.6, bm25_weight=0.4, threshold=0.3):
@@ -237,14 +237,13 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
         except Exception:
             retrieved_images = []
 
-    # --- Check if fallback to GEMINI is needed ---
+    # --- Automatic fallback to Gemini API if KB empty ---
     disclaimer_text = ""
     if not retrieved_texts:
         disclaimer_text = "⚠️ I couldn't find relevant information in my knowledge base, I'll fetch answer using my API."
         prompt = f"{disclaimer_text}\n\nQuestion: {query}\nAnswer using your general knowledge:"
         retrieved_texts = [Document(page_content=disclaimer_text, metadata={"source": "GEMINI API", "page": "Null"})]
     else:
-        # Prepare context for KB
         text_contexts = [
             f"{d.page_content.strip()} (Source: {d.metadata.get('source','uploaded.pdf')}, Page: {d.metadata.get('page','?')})"
             for d in retrieved_texts
@@ -257,11 +256,6 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
     response = chat_model.generate_content(prompt, stream=True)
     return response, retrieved_images, retrieved_texts
 
-
-# -------------------------------
-# The rest of your existing Streamlit UI code remains unchanged
-# (Rendering chat bubbles, file uploader, chat input, streaming Gemini responses)
-# -------------------------------
 
 st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
 
