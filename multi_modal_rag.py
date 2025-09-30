@@ -1,5 +1,5 @@
 # ===============================
-# multi_modal_rag.py (Refactored with Copy Button, fixed model)
+# multi_modal_rag.py (Refactored with Copy Button, fixed model + mode toggle)
 # ===============================
 import os
 import tempfile
@@ -179,13 +179,14 @@ def delete_document_by_source(source_name):
         save_text_faiss(text_index, text_docs)
 
 # -------------------------------
-# RAG Chat (with strict fallback)
+# RAG Chat (with modes: KB, General, Hybrid)
 # -------------------------------
 def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
-                   faiss_weight=0.6, bm25_weight=0.4, threshold=0.3):
+                   faiss_weight=0.6, bm25_weight=0.4, threshold=0.3, mode="📄 Knowledge Base"):
+
     # --- Retrieve FAISS + BM25 documents ---
     faiss_scores, faiss_results = [], []
-    if text_index and text_docs:
+    if text_index and text_docs and mode in ["📄 Knowledge Base", "🔀 Hybrid"]:
         try:
             query_emb = embed_text([query])[0].astype("float32")
             D, I = text_index.search(query_emb.reshape(1, -1), top_k_text)
@@ -197,7 +198,7 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
             faiss_results, faiss_scores = [], []
 
     bm25_results, bm25_scores = [], []
-    if bm25:
+    if bm25 and mode in ["📄 Knowledge Base", "🔀 Hybrid"]:
         try:
             scores = bm25.get_scores(query.split())
             top_idx = np.argsort(scores)[::-1][:top_k_text]
@@ -236,26 +237,34 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
         except Exception:
             retrieved_images = []
 
-    # --- Prepare context or fallback ---
-    if retrieved_texts:
+    # --- Prepare prompt based on mode ---
+    if mode == "🌐 General Chat":
+        prompt = f"Question: {query}\nAnswer based on your own general knowledge:"
+    elif mode == "🔀 Hybrid":
         text_contexts = [
-            f"{d.page_content.strip()} (Source: {d.metadata.get('Source','uploaded.pdf')}, Page: {d.metadata.get('page','1')})"
+            f"{d.page_content.strip()} (Source: {d.metadata.get('source','uploaded.pdf')}, Page: {d.metadata.get('page','?')})"
             for d in retrieved_texts
         ]
-        image_context = " ".join([f"[Image: {os.path.basename(path)}]"
-                                  for path in retrieved_images if isinstance(path, str)])
-        context = "\n".join(text_contexts).strip() + ("\n" + image_context if image_context else "")
-        prompt = f"Use the following information to answer the question clearly and professionally:\n{context}\n\nQuestion: {query}\nAnswer:"
-    else:
-        # --- FALLBACK to Gemini's knowledge ---
-        prompt = f"Question: {query}\nAnswer this question based on your general knowledge:"
-        retrieved_texts = [Document(page_content="Answered by Gemini AI",
-                                    metadata={"source": "GEMINI AI", "page": "Null"})]
+        image_context = " ".join([f"[Image: {os.path.basename(path)}]" for path in retrieved_images])
+        context = "\n".join(text_contexts) + ("\n" + image_context if image_context else "")
+        prompt = f"Use the following info (if relevant) along with your own knowledge:\n{context}\n\nQuestion: {query}\nAnswer:"
+    else:  # Knowledge Base
+        if retrieved_texts:
+            text_contexts = [
+                f"{d.page_content.strip()} (Source: {d.metadata.get('source','uploaded.pdf')}, Page: {d.metadata.get('page','?')})"
+                for d in retrieved_texts
+            ]
+            image_context = " ".join([f"[Image: {os.path.basename(path)}]" for path in retrieved_images])
+            context = "\n".join(text_contexts) + ("\n" + image_context if image_context else "")
+            prompt = f"Use the following information to answer the question clearly and professionally:\n{context}\n\nQuestion: {query}\nAnswer:"
+        else:
+            prompt = f"Question: {query}\nAnswer this question based on your general knowledge:"
+            retrieved_texts = [Document(page_content="Answered by Gemini AI",
+                                        metadata={"source": "GEMINI AI", "page": "Null"})]
 
     # --- Generate response from Gemini ---
     response = chat_model.generate_content(prompt, stream=True)
     return response, retrieved_images, retrieved_texts
-
 
 # -------------------------------
 # Format answers
@@ -268,6 +277,18 @@ def format_answer(answer:str)->str:
 # -------------------------------
 # Streamlit UI
 # -------------------------------
+st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
+
+# --- Mode selector in sidebar ---
+with st.sidebar:
+    st.markdown("<h3>💬 Chats</h3>", unsafe_allow_html=True)
+    chat_mode = st.radio("Mode:", ["📄 Knowledge Base", "🌐 General Chat", "🔀 Hybrid"], index=0)
+
+# -------------------------------
+# The rest of your existing Streamlit UI code remains unchanged
+# (Rendering chat bubbles, file uploader, chat input, streaming Gemini responses)
+# -------------------------------
+
 st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
 
 # CSS + Copy Script
