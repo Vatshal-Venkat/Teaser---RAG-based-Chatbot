@@ -257,11 +257,8 @@ def rag_chat_stream(query, use_images=True, top_k_text=6, top_k_images=2,
     return response, retrieved_images, retrieved_texts
 
 # -------------------------------
-# The rest of your Streamlit code (UI, file uploader, chat handling)
+# Streamlit UI & Chat Handling
 # -------------------------------
-
-
-
 st.set_page_config(page_title="TEASER", layout="wide", page_icon="🤖")
 st.markdown("""<style>
 .chat-container { max-width:600px; margin:auto; overflow-y:auto; max-height:75vh; padding-bottom:100px; }
